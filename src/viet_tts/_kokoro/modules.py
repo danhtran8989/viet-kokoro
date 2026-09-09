@@ -98,7 +98,7 @@ class _xv(nn.Module):
 class _y3(nn.Module):
     def __init__(self, _y4, _y5, _y6, _y7=50, _y8=0.1):
         super().__init__()
-        self._y9 = _ya(_y4=_y4, _y5=_y5, _y6=_y6, _y8=_y8)
+        self._y9 = _ya(_ys=_y4, _yt=_y5, _yu=_y6, _y8=_y8)
         self._yb = nn.LSTM(_y5 + _y4, _y5 // 2, 1, batch_first=True, bidirectional=True)
         self._yc = _x4(_y5, _y7)
         self._yd = nn.LSTM(_y5 + _y4, _y5 // 2, 1, batch_first=True, bidirectional=True)
