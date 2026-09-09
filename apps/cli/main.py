@@ -124,6 +124,7 @@ def load_model_and_voices():
         _vp_path = CKPTS_DIR / _vinfo["filename"]
         if _vp_path.exists():
             # Explicitly use weights_only=False to match the patch
+            print(f"[INFO] Loading voice: {_vname} from {_vp_path}")
             voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=False)
             print(f"[INFO] Loaded voice: {_vname}")
         else:
