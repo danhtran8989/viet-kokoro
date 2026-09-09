@@ -260,8 +260,10 @@ class _vz(nn.Module):
 
 
 class _w1(nn.Module):
-    def __init__(self, _w2, _w3, _w4=64, _w5=nn.LeakyReLU(0.2), _w6='none', _w7=0.0):
+    def __init__(self, _w2, _w3, _w4=64, _w5=nn.LeakyReLU(0.2), _w6='none', _w7=0.0, upsample=None):
         super().__init__()
+        if upsample is True:
+            _w6 = 't'
         self._w5 = _w5
         self._w8 = _w6
         self._w9 = _vz(_w6)
