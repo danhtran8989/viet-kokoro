@@ -49,60 +49,15 @@ try:
 except ImportError:
     sf = None
 
+# Try to import tqdm for progress bars, fallback to a no-op identity function
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, **kwargs):
+        return iterable
+
 REPO_ID = "contextboxai/Kokoro-Vietnamese"
 CKPTS_DIR = Path(__file__).resolve().parent.parent.parent / "ckpts" / "Kokoro-Vietnamese"
-
-
-def _resolve_file(filename: str) -> str:
-    local = CKPTS_DIR / filename
-    
-    if local.exists():
-        # Check if it's a Git LFS pointer file (starts with "version ")
-        try:
-            with open(local, "rb") as f:
-                header = f.read(10)
-            if header.startswith(b"version "):
-                print(f"[WARN] {local.name} is a Git LFS pointer, not the real file.")
-                print(f"[INFO] Deleting pointer. Please run 'git lfs pull' or it will auto-download.")
-                local.unlink()
-            else:
-                print(f"[INFO] Using local checkpoint: {local}")
-                return str(local)
-        except Exception as e:
-            print(f"[WARN] Could not read {local}: {e}. Redownloading...")
-            local.unlink()
-
-    # If file doesn't exist or was a deleted pointer, download it
-    print(f"[INFO] Downloading from HF to cache: {REPO_ID}/{filename}")
-    CKPTS_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # Download to the specific local directory to keep everything in ckpts/
-    downloaded_path = hf_hub_download(
-        repo_id=REPO_ID, 
-        filename=filename,
-        local_dir=str(CKPTS_DIR.parent),
-        local_dir_use_symlinks=False
-    )
-    
-    # hf_hub_download with local_dir might return a path inside the local_dir structure
-    # Ensure we return the correct absolute path in our CKPTS_DIR
-    final_path = CKPTS_DIR / filename
-    if not final_path.exists() and Path(downloaded_path).exists():
-        # Fallback copy if hf_hub_download put it in a nested repo-id folder
-        import shutil
-        shutil.copy(downloaded_path, final_path)
-        
-    return str(final_path)
-
-
-def _is_lfs_pointer(filepath: Path) -> bool:
-    """Check if a file is a Git LFS pointer (fake text file) instead of real data."""
-    try:
-        with open(filepath, "rb") as f:
-            header = f.read(10)
-        return header.startswith(b"version ")
-    except Exception:
-        return False
 
 
 def _resolve_file(filename: str) -> str:
@@ -110,12 +65,18 @@ def _resolve_file(filename: str) -> str:
     local = CKPTS_DIR / filename
 
     if local.exists():
-        if _is_lfs_pointer(local):
-            print(f"[WARN] {local.name} is a Git LFS pointer. Deleting and redownloading...")
+        try:
+            with open(local, "rb") as f:
+                header = f.read(10)
+            if header.startswith(b"version "):
+                print(f"[WARN] {local.name} is a Git LFS pointer. Deleting and redownloading...")
+                local.unlink()
+            else:
+                print(f"[INFO] Using local checkpoint: {local}")
+                return str(local)
+        except Exception as e:
+            print(f"[WARN] Could not read {local}: {e}. Redownloading...")
             local.unlink()
-        else:
-            print(f"[INFO] Using local checkpoint: {local}")
-            return str(local)
 
     print(f"[INFO] Downloading from HF: {REPO_ID}/{filename}")
     CKPTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -130,6 +91,16 @@ def _resolve_file(filename: str) -> str:
         import shutil
         shutil.copy(downloaded, final_path)
     return str(final_path)
+
+
+def _is_lfs_pointer(filepath: Path) -> bool:
+    """Check if a file is a Git LFS pointer (fake text file) instead of real data."""
+    try:
+        with open(filepath, "rb") as f:
+            header = f.read(10)
+        return header.startswith(b"version ")
+    except Exception:
+        return False
 
 
 def load_model_and_voices():
@@ -211,7 +182,11 @@ def generate_single(text: str, voice: str, speed: float, output_path: str, model
         return False
 
     audio_chunks = []
-    for index, chunk_text in enumerate(split_text(text), start=1):
+    chunks = list(split_text(text))
+    
+    # Use tqdm for chunk processing, disable if 1 or fewer chunks
+    progress_iter = tqdm(chunks, desc="Generating chunks", disable=len(chunks) <= 1)
+    for index, chunk_text in enumerate(progress_iter, start=1):
         ps = phonemize(chunk_text)
         if not ps:
             continue
@@ -248,7 +223,7 @@ def generate_single(text: str, voice: str, speed: float, output_path: str, model
     return True
 
 
-def generate_batch(input_file: str, voices: list, speed: float, output_dir: str, model, voicepacks, device):
+def generate_batch(input_file: str, voices: list, speed: float, output_dir: str, model, voicepacks, device, batch_size: int = 1):
     """Generate audio for multiple lines and multiple voices, organized by voice subfolders."""
     with open(input_file, 'r', encoding='utf-8') as f:
         lines = [line.strip() for line in f if line.strip()]
@@ -270,30 +245,43 @@ def generate_batch(input_file: str, voices: list, speed: float, output_dir: str,
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    total_jobs = len(lines) * len(valid_voices)
-    job_idx = 1
+    # Pre-create voice directories
+    voice_dirs = {}
+    for voice in valid_voices:
+        v_dir = out_dir / voice
+        v_dir.mkdir(parents=True, exist_ok=True)
+        voice_dirs[voice] = v_dir
+
+    # Create a flat list of all generation tasks
+    tasks = []
+    for voice in valid_voices:
+        for line_idx, text in enumerate(lines, start=1):
+            tasks.append((voice, voice_dirs[voice], line_idx, text))
+            
+    total_jobs = len(tasks)
     success_count = 0
 
     print(f"\n[INFO] Starting batch generation: {len(lines)} lines × {len(valid_voices)} voices = {total_jobs} files")
-    print(f"[INFO] Base output directory: {out_dir.resolve()}")
-    print(f"[INFO] Files will be organized into subfolders for each voice.\n")
+    print(f"[INFO] Batch size: {batch_size}")
+    print(f"[INFO] Base output directory: {out_dir.resolve()}\n")
 
-    for voice in valid_voices:
-        voice_dir = out_dir / voice
-        voice_dir.mkdir(parents=True, exist_ok=True)
-        print(f"[INFO] Processing voice: {voice} -> {voice_dir.resolve()}")
+    # Process tasks in batches with tqdm progress bar
+    for i in tqdm(range(0, total_jobs, batch_size), desc="Generating batches"):
+        batch_tasks = tasks[i:i+batch_size]
         
-        for line_idx, text in enumerate(lines, start=1):
-            print(f"[{job_idx}/{total_jobs}] Line {line_idx} | Text: {text[:50]}...")
-            
+        # NOTE: True model-level batching would require padding phonemes and stacking ref_s.
+        # For maximum compatibility with the current KModel API, we process sequentially within the batch chunk.
+        for voice, voice_dir, line_idx, text in batch_tasks:
             audio_chunks = []
             skip_line = False
-            for chunk_text in split_text(text):
+            
+            chunk_texts = list(split_text(text))
+            for chunk_text in chunk_texts:
                 ps = phonemize(chunk_text)
                 if not ps:
                     continue
                 if len(ps) > 510:
-                    print(f"  [WARN] Phoneme chunk too long ({len(ps)} > 510). Skipping this line.")
+                    print(f"\n  [WARN] Phoneme chunk too long ({len(ps)} > 510). Skipping line {line_idx}.")
                     skip_line = True
                     break
                 
@@ -303,8 +291,6 @@ def generate_batch(input_file: str, voices: list, speed: float, output_dir: str,
                 audio_chunks.append(audio.detach().cpu().numpy())
             
             if skip_line or not audio_chunks:
-                print(f"  [WARN] No audio generated for this line.")
-                job_idx += 1
                 continue
 
             crossfade_samples = round(SAMPLE_RATE * 50 / 1000)
@@ -320,9 +306,7 @@ def generate_batch(input_file: str, voices: list, speed: float, output_dir: str,
                 from scipy.io import wavfile
                 wavfile.write(out_path, SAMPLE_RATE, audio)
                 
-            print(f"  [SUCCESS] Saved: {filename}")
             success_count += 1
-            job_idx += 1
 
     print("-" * 60)
     print(f"[INFO] Batch complete! Successfully generated {success_count}/{total_jobs} files in {out_dir.resolve()}")
@@ -335,7 +319,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
                "  Single:  python apps/cli/main.py -t 'Xin chào' -o out.wav -v diem_trinh\n"
-               "  Batch:   python apps/cli/main.py -i sentences.txt -o ./output_folder -v diem_trinh mai_linh"
+               "  Batch:   python apps/cli/main.py -i sentences.txt -o ./output_folder -v diem_trinh mai_linh -b 4"
     )
     
     input_group = parser.add_mutually_exclusive_group(required=True)
@@ -348,6 +332,8 @@ def main():
                         help="Voice name(s). Provide multiple for batch mode. Default: diem_trinh")
     parser.add_argument("--speed", "-s", type=float, default=1.0, 
                         help="Speech speed multiplier (default: 1.0, recommended: 0.75 - 1.25)")
+    parser.add_argument("--batch-size", "-b", type=int, default=1, 
+                        help="Batch size for processing (default: 1). Higher values group tqdm updates and prepare for future model-level batching.")
     
     args = parser.parse_args()
     
@@ -370,7 +356,8 @@ def main():
             output_dir=args.output,
             model=model,
             voicepacks=voicepacks,
-            device=device
+            device=device,
+            batch_size=args.batch_size
         )
         sys.exit(0 if success else 1)
         
