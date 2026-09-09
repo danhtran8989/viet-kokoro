@@ -194,4 +194,10 @@ with gr.Blocks(theme=gr.themes.Citrus(), css=_t0) as _t1:
         )
 
 if __name__ == "__main__":
-    _t1.launch()
+    import argparse
+    _pa = argparse.ArgumentParser()
+    _pa.add_argument("--share", action="store_true")
+    _pa.add_argument("--host", type=str, default=None)
+    _pa.add_argument("--port", type=int, default=None)
+    _pb = _pa.parse_args()
+    _t1.launch(share=_pb.share, server_name=_pb.host, server_port=_pb.port)
