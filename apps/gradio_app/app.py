@@ -41,22 +41,35 @@ def _resolve_file(filename: str) -> str:
 
 _config_path = _resolve_file("config.json")
 _model_path = _resolve_file("kokoro_vi.pth")
-_voicepack_path = _resolve_file("kokoro_vi_voicepack.pt")
 
 with open(_config_path, "r", encoding="utf-8") as _f:
     _config = json.load(_f)
 
-device = get_device()
-print(f"[INFO] Using device: {device}")
+_device = get_device()
+print(f"[INFO] Using device: {_device}")
 
 model = KModel(
     repo_id="hexgrad/Kokoro-82M",
     config=_config,
     model=_model_path,
-).to(device).eval()
-voicepack = torch.load(_voicepack_path, map_location="cpu", weights_only=True)
+).to(_device).eval()
+
+_voices_json = CKPTS_DIR / "voices.json"
+if _voices_json.exists():
+    with open(_voices_json, "r", encoding="utf-8") as _f:
+        VOICES = json.load(_f)
+
+voicepacks: dict[str, torch.Tensor] = {}
+for _vname, _vinfo in VOICES.items():
+    _vp_path = CKPTS_DIR / _vinfo["filename"]
+    if _vp_path.exists():
+        voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=True)
+        print(f"[INFO] Loaded voice: {_vname} from {_vp_path}")
+    else:
+        print(f"[WARN] Voice file not found: {_vp_path}")
 
 VOICE_CHOICES = [(info["label"], name) for name, info in VOICES.items()]
+device = _device
 
 DEMO_EXAMPLES = [
     [
@@ -95,6 +108,9 @@ DEMO_EXAMPLES = [
 def generate(text: str, voice: str, speed: float) -> tuple:
     if not text or not text.strip():
         return None, "", "Please enter Vietnamese text."
+    vp = voicepacks.get(voice)
+    if vp is None:
+        return None, "", f"Voice '{voice}' not found."
     audio_chunks: list[np.ndarray] = []
     phoneme_chunks: list[str] = []
     for index, chunk_text in enumerate(split_text(text), start=1):
@@ -106,7 +122,7 @@ def generate(text: str, voice: str, speed: float) -> tuple:
                 f"Phoneme chunk too long ({len(ps)} > 510): {chunk_text[:80]}"
             )
         with torch.no_grad():
-            ref_s = voicepack[len(ps) - 1]
+            ref_s = vp[len(ps) - 1]
             audio = model(ps, ref_s, float(speed))
         phoneme_chunks.append(f"[{index}] {ps}")
         audio_chunks.append(audio.detach().cpu().numpy())
