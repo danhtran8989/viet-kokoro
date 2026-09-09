@@ -11,6 +11,19 @@ import json
 import argparse
 import numpy as np
 import torch
+
+# ==============================================================================
+# PATCH: Force weights_only=False for torch.load
+# This is required because the underlying KModel library uses weights_only=True, 
+# which fails on this specific .pth format in newer PyTorch versions.
+# ==============================================================================
+_original_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
+# ==============================================================================
+
 from huggingface_hub import hf_hub_download
 
 from kokoro_vietnamese._kokoro import KModel
@@ -78,7 +91,8 @@ def load_model_and_voices():
     for _vname, _vinfo in active_voices.items():
         _vp_path = CKPTS_DIR / _vinfo["filename"]
         if _vp_path.exists():
-            voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=True)
+            # Explicitly use weights_only=False to match the patch and avoid errors
+            voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=False)
             print(f"[INFO] Loaded voice: {_vname}")
         else:
             print(f"[WARN] Voice file not found: {_vp_path}")
@@ -173,9 +187,7 @@ def generate_batch(input_file: str, voices: list, speed: float, output_dir: str,
     print(f"[INFO] Base output directory: {out_dir.resolve()}")
     print(f"[INFO] Files will be organized into subfolders for each voice.\n")
 
-    # Loop through voices first to create subfolders and keep console output clean
     for voice in valid_voices:
-        # Create a subfolder for each voice automatically
         voice_dir = out_dir / voice
         voice_dir.mkdir(parents=True, exist_ok=True)
         print(f"[INFO] Processing voice: {voice} -> {voice_dir.resolve()}")
@@ -207,7 +219,6 @@ def generate_batch(input_file: str, voices: list, speed: float, output_dir: str,
             crossfade_samples = round(SAMPLE_RATE * 50 / 1000)
             audio = merge_audio_chunks(audio_chunks, crossfade_samples)
             
-            # Create safe filename: line_001_slug.wav (voice folder handles the voice name)
             slug = sanitize_filename(text, max_len=25)
             filename = f"line_{line_idx:03d}_{slug}.wav"
             out_path = voice_dir / filename
@@ -236,7 +247,6 @@ def main():
                "  Batch:   python apps/cli/main.py -i sentences.txt -o ./output_folder -v diem_trinh mai_linh ngoc_huyen"
     )
     
-    # Mutually exclusive group for input source
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument("--text", "-t", type=str, help="Vietnamese text to synthesize (Single mode)")
     input_group.add_argument("--input-file", "-i", type=str, help="Path to a text file with one sentence per line (Batch mode)")
@@ -258,7 +268,6 @@ def main():
         sys.exit(1)
 
     if args.input_file:
-        # Batch Mode
         if not Path(args.input_file).exists():
             print(f"[ERROR] Input file not found: {args.input_file}")
             sys.exit(1)
@@ -275,7 +284,6 @@ def main():
         sys.exit(0 if success else 1)
         
     else:
-        # Single Mode
         if not args.text or not args.text.strip():
             print("[ERROR] Please provide valid text with --text.")
             sys.exit(1)
