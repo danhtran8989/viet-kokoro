@@ -36,13 +36,13 @@ VOICES = {
 }
 
 
-def split_text(text: str) -> list[str]:
+def split_text(text: str, max_chars: int = 150) -> list[str]:
     normalized = re.sub(r"\s+", " ", text.strip())
     if not normalized:
         return []
     chunks: list[str] = []
     start = 0
-    for match in re.finditer(r'[.!?…]+(?:["”\')])', normalized):
+    for match in re.finditer(r'[.!?…]+(?:[""\')])', normalized):
         end = match.end()
         if end < len(normalized) and not normalized[end].isspace():
             continue
@@ -53,7 +53,22 @@ def split_text(text: str) -> list[str]:
     remainder = normalized[start:].strip()
     if remainder:
         chunks.append(remainder)
-    return chunks
+    result: list[str] = []
+    for chunk in chunks:
+        if len(chunk) <= max_chars:
+            result.append(chunk)
+        else:
+            words = chunk.split()
+            current = ""
+            for word in words:
+                if current and len(current) + 1 + len(word) > max_chars:
+                    result.append(current)
+                    current = word
+                else:
+                    current = f"{current} {word}".strip() if current else word
+            if current:
+                result.append(current)
+    return result
 
 
 def merge_audio_chunks(chunks: list[np.ndarray], crossfade_samples: int) -> np.ndarray:
