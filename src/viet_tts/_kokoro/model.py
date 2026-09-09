@@ -29,18 +29,18 @@ class _q0(torch.nn.Module):
                 _q2 = json.load(_q6)
                 logger.debug(f"Loaded _q2: {_q2}")
         self._q7 = _q2['vocab']
-        self._q8 = _yy(AlbertConfig(vocab_size=_q2['n_token'], **_q2['plbert']))
-        self._q9 = torch.nn.Linear(self._q8.config.hidden_size, _q2['hidden_dim'])
-        self._qa = self._q8.config.max_position_embeddings
-        self._qb = _y3(
+        self.bert = _yy(AlbertConfig(vocab_size=_q2['n_token'], **_q2['plbert']))
+        self.bert_encoder = torch.nn.Linear(self.bert.config.hidden_size, _q2['hidden_dim'])
+        self._qa = self.bert.config.max_position_embeddings
+        self.predictor = _y3(
             _y4=_q2['style_dim'], _y5=_q2['hidden_dim'],
             _y6=_q2['n_layer'], _y7=_q2['max_dur'], _y8=_q2['dropout']
         )
-        self._qc = _xg(
+        self.text_encoder = _xg(
             _xh=_q2['hidden_dim'], _xi=_q2['text_encoder_kernel_size'],
             _xj=_q2['n_layer'], _xk=_q2['n_token']
         )
-        self._qd = _x3(
+        self.decoder = _x3(
             _wn=_q2['hidden_dim'], _wo=_q2['style_dim'],
             _wp=_q2['n_mels'], _wx=_q4, **_q2['istftnet']
         )
@@ -62,7 +62,7 @@ class _q0(torch.nn.Module):
 
     @property
     def device(self):
-        return self._q8.device
+        return self.bert.device
 
     @dataclass
     class _qh:
@@ -85,12 +85,12 @@ class _q0(torch.nn.Module):
 
         _qn = torch.arange(_qm.max()).unsqueeze(0).expand(_qm.shape[0], -1).type_as(_qm)
         _qn = torch.gt(_qn+1, _qm.unsqueeze(1)).to(self.device)
-        _qo = self._q8(_qj, attention_mask=(~_qn).int())
-        _qp = self._q9(_qo).transpose(-1, -2)
+        _qo = self.bert(_qj, attention_mask=(~_qn).int())
+        _qp = self.bert_encoder(_qo).transpose(-1, -2)
         _qq = _qk[:, 128:]
-        _qr = self._qb._y9(_qp, _qq, _qm, _qn)
-        _qs, _ = self._qb._yb(_qr)
-        _qt = self._qb._yc(_qs)
+        _qr = self.predictor._y9(_qp, _qq, _qm, _qn)
+        _qs, _ = self.predictor._yb(_qr)
+        _qt = self.predictor._yc(_qs)
         _qt = torch.sigmoid(_qt).sum(axis=-1) / _ql
         _qu = torch.round(_qt).clamp(min=1).long().squeeze()
         _qv = torch.repeat_interleave(torch.arange(_qj.shape[1], device=self.device), _qu)
@@ -98,10 +98,10 @@ class _q0(torch.nn.Module):
         _qw[_qv, torch.arange(_qv.shape[0])] = 1
         _qw = _qw.unsqueeze(0).to(self.device)
         _qx = _qr.transpose(-1, -2) @ _qw
-        _qy, _qz = self._qb._yo(_qx, _qq)
-        _r0 = self._qc(_qj, _qm, _qn)
+        _qy, _qz = self.predictor._yo(_qx, _qq)
+        _r0 = self.text_encoder(_qj, _qm, _qn)
         _r1 = _r0 @ _qw
-        _r2 = self._qd(_r1, _qy, _qz, _qk[:, :128]).squeeze()
+        _r2 = self.decoder(_r1, _qy, _qz, _qk[:, :128]).squeeze()
         return _r2, _qu
 
     def forward(
