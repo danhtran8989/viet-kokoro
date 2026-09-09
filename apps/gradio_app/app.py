@@ -4,6 +4,17 @@ import json
 import numpy as np
 import torch
 import gradio as gr
+import importlib
+
+for _path in [
+    os.path.join(os.path.dirname(__file__), "..", "..", "src"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "src", "viet_tts", "_kokoro"),
+]:
+    _cache = os.path.join(_path, "__pycache__")
+    if os.path.isdir(_cache):
+        import shutil
+        shutil.rmtree(_cache, ignore_errors=True)
+importlib.invalidate_caches()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
