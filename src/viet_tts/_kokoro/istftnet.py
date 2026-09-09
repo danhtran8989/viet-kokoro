@@ -334,7 +334,7 @@ class _wm(nn.Module):
         self._x2 = nn.Sequential(weight_norm(nn.Conv1d(512, 64, kernel_size=1)))
         self._x3 = _uu(_wo, _wq, _wr,
                                    _ws, _wt,
-                                   _wu, _wv, _ww, _wx=_wx)
+                                   _wu, _wv, _ww, _v3=_wx)
 
     def forward(self, _x4, _x5, _x6, _se):
         _x7 = self._x0(_x5.unsqueeze(1))
