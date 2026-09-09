@@ -55,9 +55,9 @@ def _s7():
         _sf = json.load(_se)
 
     _sg = _q0(
-        repo_id=_e,
-        config=_sf,
-        model=_sc,
+        _q1=_e,
+        _q2=_sf,
+        _q3=_sc,
     ).to(_s6).eval()
 
     _sh = torch.load(_sd, map_location="cpu", weights_only=True)
