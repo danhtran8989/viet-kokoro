@@ -1,5 +1,6 @@
 import sys
 import os
+from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 import json
@@ -19,6 +20,7 @@ from kokoro_vietnamese.core import (
 )
 
 REPO_ID = "contextboxai/Kokoro-Vietnamese"
+CKPTS_DIR = Path(__file__).resolve().parent.parent.parent / "ckpts" / "Kokoro-Vietnamese"
 
 import transformers.utils.import_utils as _import_utils
 for _flag in ("_torchvision_available", "_librosa_available", "_cv2_available"):
@@ -27,9 +29,19 @@ for _flag in ("_torchvision_available", "_librosa_available", "_cv2_available"):
 if hasattr(_import_utils, "_torchvision_version"):
     _import_utils._torchvision_version = "N/A"
 
-_config_path = hf_hub_download(repo_id=REPO_ID, filename="config.json")
-_model_path = hf_hub_download(repo_id=REPO_ID, filename="kokoro_vi.pth")
-_voicepack_path = hf_hub_download(repo_id=REPO_ID, filename="kokoro_vi_voicepack.pt")
+
+def _resolve_file(filename: str) -> str:
+    local = CKPTS_DIR / filename
+    if local.exists():
+        print(f"[INFO] Using local checkpoint: {local}")
+        return str(local)
+    print(f"[INFO] Downloading from HF: {REPO_ID}/{filename}")
+    return hf_hub_download(repo_id=REPO_ID, filename=filename)
+
+
+_config_path = _resolve_file("config.json")
+_model_path = _resolve_file("kokoro_vi.pth")
+_voicepack_path = _resolve_file("kokoro_vi_voicepack.pt")
 
 with open(_config_path, "r", encoding="utf-8") as _f:
     _config = json.load(_f)
