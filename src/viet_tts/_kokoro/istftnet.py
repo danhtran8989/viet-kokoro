@@ -96,6 +96,9 @@ class _t0(nn.Module):
             self._t5, self._t6, self._t7, window=self._t8.to(_td.device))
         return _tf.unsqueeze(-2)
 
+    def _qa(self, _td, _te, _qb=None):
+        return self._tc(_td, _te)
+
     def forward(self, _ta):
         self._tg, self._th = self._t9(_ta)
         _ti = self._tc(self._tg, self._th)
