@@ -13,6 +13,7 @@ from kokoro_vietnamese.core import (
     split_text,
     merge_audio_chunks,
     phonemize,
+    get_device,
 )
 
 REPO_ID = "contextboxai/Kokoro-Vietnamese"
@@ -33,12 +34,14 @@ _voicepack_path = hf_hub_download(repo_id=REPO_ID, filename="kokoro_vi_voicepack
 with open(_config_path, "r", encoding="utf-8") as _f:
     _config = json.load(_f)
 
-# --- Load the KModel eagerly at module scope and move to "cuda" ---
+# --- Load the KModel eagerly at module scope and move to device ---
+device = get_device()
+print(f"[INFO] Using device: {device}")
 model = KModel(
     repo_id="hexgrad/Kokoro-82M",
     config=_config,
     model=_model_path,
-).to("cuda").eval()
+).to(device).eval()
 voicepack = torch.load(_voicepack_path, map_location="cpu", weights_only=True)
 
 VOICE_CHOICES = [(info["label"], name) for name, info in VOICES.items()]

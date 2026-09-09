@@ -5,7 +5,6 @@ from .core import (
     phonemize,
     split_text,
     merge_audio_chunks,
-    get_device,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "phonemize",
     "split_text",
     "merge_audio_chunks",
-    "get_device",
 ]

@@ -11,13 +11,6 @@ DEFAULT_VOICE = "diem_trinh"
 SAMPLE_RATE = 24000
 DEFAULT_CROSSFADE_MS = 50
 
-
-def get_device():
-    import torch
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
-
 VOICES = {
     "diem_trinh": {"label": "Diễm Trinh", "filename": "voicepacks/diem_trinh.pt"},
     "hung_thinh": {"label": "Hưng Thịnh", "filename": "voicepacks/hung_thinh.pt"},
@@ -36,13 +29,20 @@ VOICES = {
 }
 
 
+def get_device():
+    import torch
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
 def split_text(text: str) -> list[str]:
     normalized = re.sub(r"\s+", " ", text.strip())
     if not normalized:
         return []
     chunks: list[str] = []
     start = 0
-    for match in re.finditer(r'[.!?…]+(?:["”\')])', normalized):
+    for match in re.finditer(r'[.!?…]+(?:[""\')])', normalized):
         end = match.end()
         if end < len(normalized) and not normalized[end].isspace():
             continue

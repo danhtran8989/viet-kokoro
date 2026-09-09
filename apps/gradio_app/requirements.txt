@@ -1,0 +1,8 @@
+gradio
+transformers>=4.48,<5
+vig2p>=0.1.0
+numpy
+soundfile
+loguru
+packaging
+attrs

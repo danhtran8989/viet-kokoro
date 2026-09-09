@@ -1,236 +1,163 @@
-import os
 import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+
 import json
 import numpy as np
 import torch
 import gradio as gr
-import importlib
-
-for _path in [
-    os.path.join(os.path.dirname(__file__), "..", "..", "src"),
-    os.path.join(os.path.dirname(__file__), "..", "..", "src", "viet_tts", "_kokoro"),
-]:
-    _cache = os.path.join(_path, "__pycache__")
-    if os.path.isdir(_cache):
-        import shutil
-        shutil.rmtree(_cache, ignore_errors=True)
-importlib.invalidate_caches()
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
-
-from viet_tts._kokoro import _q0
-from viet_tts.core import (
-    _z5,
-    _z7,
-    _z8,
-    _zg,
-    _zo,
-)
-from viet_tts.config import (
-    _a,
-    _e,
-    _d,
-    _b,
-    _c,
-    _f,
-)
-
 from huggingface_hub import hf_hub_download
 
-import transformers.utils.import_utils as _s4
-for _s5 in ("_torchvision_available", "_librosa_available", "_cv2_available"):
-    if hasattr(_s4, _s5):
-        setattr(_s4, _s5, False)
-if hasattr(_s4, "_torchvision_version"):
-    _s4._torchvision_version = "N/A"
+from kokoro_vietnamese._kokoro import KModel
+from kokoro_vietnamese.core import (
+    SAMPLE_RATE,
+    VOICES,
+    split_text,
+    merge_audio_chunks,
+    phonemize,
+    get_device,
+)
 
+REPO_ID = "contextboxai/Kokoro-Vietnamese"
 
-_s6 = "cuda" if torch.cuda.is_available() else "cpu"
+import transformers.utils.import_utils as _import_utils
+for _flag in ("_torchvision_available", "_librosa_available", "_cv2_available"):
+    if hasattr(_import_utils, _flag):
+        setattr(_import_utils, _flag, False)
+if hasattr(_import_utils, "_torchvision_version"):
+    _import_utils._torchvision_version = "N/A"
 
+_config_path = hf_hub_download(repo_id=REPO_ID, filename="config.json")
+_model_path = hf_hub_download(repo_id=REPO_ID, filename="kokoro_vi.pth")
+_voicepack_path = hf_hub_download(repo_id=REPO_ID, filename="kokoro_vi_voicepack.pt")
 
-def _s7():
-    _s8 = _f / _d
-    _s9 = _f / _b
-    _sa = _f / _c
+with open(_config_path, "r", encoding="utf-8") as _f:
+    _config = json.load(_f)
 
-    if _s8.exists() and _s9.exists() and _sa.exists():
-        _sb = str(_s8)
-        _sc = str(_s9)
-        _sd = str(_sa)
-    else:
-        _sb = hf_hub_download(repo_id=_a, filename=_d)
-        _sc = hf_hub_download(repo_id=_a, filename=_b)
-        _sd = hf_hub_download(repo_id=_a, filename=_c)
+device = get_device()
+print(f"[INFO] Using device: {device}")
 
-    with open(_sb, "r", encoding="utf-8") as _se:
-        _sf = json.load(_se)
+model = KModel(
+    repo_id="hexgrad/Kokoro-82M",
+    config=_config,
+    model=_model_path,
+).to(device).eval()
+voicepack = torch.load(_voicepack_path, map_location="cpu", weights_only=True)
 
-    _sg = _q0(
-        _q1=_e,
-        _q2=_sf,
-        _q3=_sc,
-    ).to(_s6).eval()
+VOICE_CHOICES = [(info["label"], name) for name, info in VOICES.items()]
 
-    _sh = torch.load(_sd, map_location="cpu", weights_only=True)
-    return _sg, _sh
-
-
-_si, _sj = _s7()
-
-_sk = [(info["label"], name) for name, info in _z7.items()]
-
-_sl = [
+DEMO_EXAMPLES = [
     [
-        "Giua mot buoi chieu yen tinh, co ay ke lai cau chuyen bang mot giong noi am ap va cham roi.",
+        "Giữa một buổi chiều yên tĩnh, cô ấy kể lại câu chuyện bằng một giọng nói ấm áp và chậm rãi.",
         "diem_trinh",
         1.0,
     ],
     [
-        "Sang nay, thanh pho thuc day trong lan suong mong, con nhung con duong thi bat dau ron rang tieng xe.",
+        "Sáng nay, thành phố thức dậy trong làn sương mỏng, còn những con đường thì bắt đầu rộn ràng tiếng xe.",
         "mai_linh",
         1.0,
     ],
     [
-        "Neu ban lang nghe that ky, ban se nghe thay tieng mua roi nhe tren mai hien sau nha.",
+        "Nếu bạn lắng nghe thật kỹ, bạn sẽ nghe thấy tiếng mưa rơi nhẹ trên mái hiên sau nhà.",
         "ngoc_huyen",
         0.95,
     ],
     [
-        "Ban tin hom nay ghi nhan nhieu tin hieu tich cuc tu thi truong, dac biet la nhom cong nghe va tieu dung.",
+        "Bản tin hôm nay ghi nhận nhiều tín hiệu tích cực từ thị trường, đặc biệt là nhóm công nghệ và tiêu dùng.",
         "hung_thinh",
         1.03,
     ],
     [
-        "Hanh trinh qua mien Trung de lai trong toi ky uc ve nang, gio, bien xanh va nhung bua com rat dam da.",
+        "Hành trình qua miền Trung để lại trong tôi ký ức về nắng, gió, biển xanh và những bữa cơm rất đậm đà.",
         "tuan_ngoc",
         1.0,
     ],
     [
-        "Mot podcast hay khong chi can noi dung tot, ma con can nhip ke du cuon hut de giu nguoi nghe o lai.",
+        "Một podcast hay không chỉ cần nội dung tốt, mà còn cần nhịp kể đủ cuốn hút để giữ người nghe ở lại.",
         "storyvert",
         1.0,
     ],
 ]
 
 
-def _sm(_sn: str, _so: str, _sp: float) -> tuple:
-    if not _sn or not _sn.strip():
-        return None, "", "Vui long nhap van ban tieng Viet."
-    _sq: list[np.ndarray] = []
-    _sr: list[str] = []
-    _ss = 0
-    for _st in _z8(_sn):
-        _st = _st.strip()
-        if not _st:
+def generate(text: str, voice: str, speed: float) -> tuple:
+    if not text or not text.strip():
+        return None, "", "Please enter Vietnamese text."
+    audio_chunks: list[np.ndarray] = []
+    phoneme_chunks: list[str] = []
+    for index, chunk_text in enumerate(split_text(text), start=1):
+        ps = phonemize(chunk_text)
+        if not ps:
             continue
-        _su = _zo(_st)
-        if not _su:
-            continue
-        if len(_su) <= 510:
-            _ss += 1
-            with torch.no_grad():
-                _sv = _sj[len(_su) - 1]
-                _sw = _si(_su, _sv, float(_sp))
-            _sr.append(f"[{_ss}] {_su}")
-            _sq.append(_sw.detach().cpu().numpy())
-        else:
-            _sw_list = _st.split(",")
-            if len(_sw_list) < 2:
-                _sw_list = _st.split(" ")
-            _sw_tmp = ""
-            for _sx in _sw_list:
-                _sx = _sx.strip()
-                if not _sx:
-                    continue
-                _sw_test = (_sw_tmp + " " + _sx).strip() if _sw_tmp else _sx
-                _sv_test = _zo(_sw_test)
-                if len(_sv_test) > 510 and _sw_tmp:
-                    _ss += 1
-                    _su = _zo(_sw_tmp)
-                    with torch.no_grad():
-                        _sv = _sj[len(_su) - 1]
-                        _sw = _si(_su, _sv, float(_sp))
-                    _sr.append(f"[{_ss}] {_su}")
-                    _sq.append(_sw.detach().cpu().numpy())
-                    _sw_tmp = _sx
-                else:
-                    _sw_tmp = _sw_test
-            if _sw_tmp:
-                _su = _zo(_sw_tmp)
-                if _su and len(_su) <= 510:
-                    _ss += 1
-                    with torch.no_grad():
-                        _sv = _sj[len(_su) - 1]
-                        _sw = _si(_su, _sv, float(_sp))
-                    _sr.append(f"[{_ss}] {_su}")
-                    _sq.append(_sw.detach().cpu().numpy())
-    if not _sq:
-        return None, "", "Khong tao duoc audio."
-    _sx = round(_z5 * 50 / 1000)
-    _sy = _zg(_sq, _sx)
-    _sz = _z7.get(_so, {}).get("label", _so)
-    return (_z5, _sy), "\n".join(_sr), f"Voice: {_sz}"
+        if len(ps) > 510:
+            raise ValueError(
+                f"Phoneme chunk too long ({len(ps)} > 510): {chunk_text[:80]}"
+            )
+        with torch.no_grad():
+            ref_s = voicepack[len(ps) - 1]
+            audio = model(ps, ref_s, float(speed))
+        phoneme_chunks.append(f"[{index}] {ps}")
+        audio_chunks.append(audio.detach().cpu().numpy())
+    if not audio_chunks:
+        return None, "", "No audio generated."
+    crossfade_samples = round(SAMPLE_RATE * 50 / 1000)
+    audio = merge_audio_chunks(audio_chunks, crossfade_samples)
+    label = VOICES.get(voice, {}).get("label", voice)
+    return (SAMPLE_RATE, audio), "\n".join(phoneme_chunks), f"Voice: {label} | Device: {device}"
 
 
-_t0 = """
+CSS = """
 #col-container { max-width: 1100px; margin: 0 auto; }
 .dark .gradio-container { color: var(--body-text-color); }
 """
 
-with gr.Blocks(theme=gr.themes.Citrus(), css=_t0) as _t1:
+with gr.Blocks(theme=gr.themes.Citrus(), css=CSS) as demo:
     with gr.Column(elem_id="col-container"):
-        gr.Markdown("# Vietnamese TTS")
+        gr.Markdown("# 🇻🇳 Kokoro Vietnamese TTS")
         gr.Markdown(
-            "Vietnamese text-to-speech demo using "
+            "Vietnamese text-to-speech using "
             "[contextboxai/Kokoro-Vietnamese](https://huggingface.co/contextboxai/Kokoro-Vietnamese), "
-            "a fine-tune of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) "
-            "with Vietnamese G2P via [vig2p](https://pypi.org/project/vig2p/)."
+            f"running on **{device}**."
         )
         with gr.Row():
             with gr.Column(scale=2):
-                _t2 = gr.Textbox(
+                text = gr.Textbox(
                     label="Vietnamese Text",
                     lines=5,
-                    value=_sl[0][0],
-                    placeholder="Nhap van ban tieng Viet...",
+                    value=DEMO_EXAMPLES[0][0],
+                    placeholder="Enter Vietnamese text...",
                 )
                 with gr.Row():
-                    _t3 = gr.Dropdown(
+                    voice = gr.Dropdown(
                         label="Voice",
-                        choices=_sk,
+                        choices=VOICE_CHOICES,
                         value="diem_trinh",
                     )
-                    _t4 = gr.Slider(
+                    speed = gr.Slider(
                         minimum=0.75, maximum=1.25, value=1.0, step=0.01,
                         label="Speed",
                     )
-                _t5 = gr.Button("Generate", variant="primary")
+                submit = gr.Button("Generate", variant="primary")
             with gr.Column(scale=1):
-                _t6 = gr.Audio(label="Audio", type="numpy")
-                _t7 = gr.Textbox(label="Status", interactive=False)
-        _t8 = gr.Textbox(
+                audio_out = gr.Audio(label="Audio", type="numpy")
+                status = gr.Textbox(label="Status", interactive=False)
+        phonemes = gr.Textbox(
             label="Phonemes", lines=4, interactive=False,
         )
         gr.Examples(
-            examples=_sl,
-            inputs=[_t2, _t3, _t4],
-            outputs=[_t6, _t8, _t7],
-            fn=_sm,
+            examples=DEMO_EXAMPLES,
+            inputs=[text, voice, speed],
+            outputs=[audio_out, phonemes, status],
+            fn=generate,
             cache_examples=True,
             cache_mode="lazy",
         )
-        _t5.click(
-            fn=_sm,
-            inputs=[_t2, _t3, _t4],
-            outputs=[_t6, _t8, _t7],
+        submit.click(
+            fn=generate,
+            inputs=[text, voice, speed],
+            outputs=[audio_out, phonemes, status],
             api_name="generate",
         )
 
 if __name__ == "__main__":
-    import argparse
-    _pa = argparse.ArgumentParser()
-    _pa.add_argument("--share", action="store_true")
-    _pa.add_argument("--host", type=str, default=None)
-    _pa.add_argument("--port", type=int, default=None)
-    _pb = _pa.parse_args()
-    _t1.launch(share=_pb.share, server_name=_pb.host, server_port=_pb.port)
+    demo.launch()
