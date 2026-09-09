@@ -306,15 +306,23 @@ class _w1(nn.Module):
 
 
 class _wm(nn.Module):
-    def __init__(self, _wn, _wo, _wp,
-                 _wq,
-                 _wr,
-                 _ws,
-                 _wt,
-                 _wu,
-                 _wv, _ww,
-                 _wx=False):
+    def __init__(self, _wn, _wo, _wp, _wx=False,
+                 resblock_kernel_sizes=None,
+                 upsample_rates=None,
+                 upsample_initial_channel=None,
+                 resblock_dilation_sizes=None,
+                 upsample_kernel_sizes=None,
+                 gen_istft_n_fft=None,
+                 gen_istft_hop_size=None,
+                 _wq=None, _wr=None, _ws=None, _wt=None, _wu=None, _wv=None, _ww=None):
         super().__init__()
+        _wq = _wq or resblock_kernel_sizes
+        _wr = _wr or upsample_rates
+        _ws = _ws or upsample_initial_channel
+        _wt = _wt or resblock_dilation_sizes
+        _wu = _wu or upsample_kernel_sizes
+        _wv = _wv or gen_istft_n_fft
+        _ww = _ww or gen_istft_hop_size
         self._wy = _w1(_wn + 2, 1024, _wo)
         self._wz = nn.ModuleList()
         self._wz.append(_w1(1024 + 2 + 64, 1024, _wo))
