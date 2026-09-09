@@ -118,19 +118,52 @@ def _sm(_sn: str, _so: str, _sp: float) -> tuple:
         return None, "", "Vui long nhap van ban tieng Viet."
     _sq: list[np.ndarray] = []
     _sr: list[str] = []
-    for _ss, _st in enumerate(_z8(_sn), start=1):
+    _ss = 0
+    for _st in _z8(_sn):
+        _st = _st.strip()
+        if not _st:
+            continue
         _su = _zo(_st)
         if not _su:
             continue
-        if len(_su) > 510:
-            raise ValueError(
-                f"Phoneme chunk too long ({len(_su)} > 510): {_st[:80]}"
-            )
-        with torch.no_grad():
-            _sv = _sj[len(_su) - 1]
-            _sw = _si(_su, _sv, float(_sp))
-        _sr.append(f"[{_ss}] {_su}")
-        _sq.append(_sw.detach().cpu().numpy())
+        if len(_su) <= 510:
+            _ss += 1
+            with torch.no_grad():
+                _sv = _sj[len(_su) - 1]
+                _sw = _si(_su, _sv, float(_sp))
+            _sr.append(f"[{_ss}] {_su}")
+            _sq.append(_sw.detach().cpu().numpy())
+        else:
+            _sw_list = _st.split(",")
+            if len(_sw_list) < 2:
+                _sw_list = _st.split(" ")
+            _sw_tmp = ""
+            for _sx in _sw_list:
+                _sx = _sx.strip()
+                if not _sx:
+                    continue
+                _sw_test = (_sw_tmp + " " + _sx).strip() if _sw_tmp else _sx
+                _sv_test = _zo(_sw_test)
+                if len(_sv_test) > 510 and _sw_tmp:
+                    _ss += 1
+                    _su = _zo(_sw_tmp)
+                    with torch.no_grad():
+                        _sv = _sj[len(_su) - 1]
+                        _sw = _si(_su, _sv, float(_sp))
+                    _sr.append(f"[{_ss}] {_su}")
+                    _sq.append(_sw.detach().cpu().numpy())
+                    _sw_tmp = _sx
+                else:
+                    _sw_tmp = _sw_test
+            if _sw_tmp:
+                _su = _zo(_sw_tmp)
+                if _su and len(_su) <= 510:
+                    _ss += 1
+                    with torch.no_grad():
+                        _sv = _sj[len(_su) - 1]
+                        _sw = _si(_su, _sv, float(_sp))
+                    _sr.append(f"[{_ss}] {_su}")
+                    _sq.append(_sw.detach().cpu().numpy())
     if not _sq:
         return None, "", "Khong tao duoc audio."
     _sx = round(_z5 * 50 / 1000)
