@@ -14,8 +14,7 @@ import torch
 
 # ==============================================================================
 # PATCH: Force weights_only=False for torch.load
-# This is required because the underlying KModel library uses weights_only=True, 
-# which fails on this specific .pth format in newer PyTorch versions.
+# Required for PyTorch 2.6+ compatibility with this specific model format.
 # ==============================================================================
 _original_torch_load = torch.load
 def _patched_torch_load(*args, **kwargs):
@@ -56,17 +55,50 @@ CKPTS_DIR = Path(__file__).resolve().parent.parent.parent / "ckpts" / "Kokoro-Vi
 
 def _resolve_file(filename: str) -> str:
     local = CKPTS_DIR / filename
+    
     if local.exists():
-        print(f"[INFO] Using local checkpoint: {local}")
-        return str(local)
-    print(f"[INFO] Downloading from HF: {REPO_ID}/{filename}")
-    return hf_hub_download(repo_id=REPO_ID, filename=filename)
+        # Check if it's a Git LFS pointer file (starts with "version ")
+        try:
+            with open(local, "rb") as f:
+                header = f.read(10)
+            if header.startswith(b"version "):
+                print(f"[WARN] {local.name} is a Git LFS pointer, not the real file.")
+                print(f"[INFO] Deleting pointer. Please run 'git lfs pull' or it will auto-download.")
+                local.unlink()
+            else:
+                print(f"[INFO] Using local checkpoint: {local}")
+                return str(local)
+        except Exception as e:
+            print(f"[WARN] Could not read {local}: {e}. Redownloading...")
+            local.unlink()
+
+    # If file doesn't exist or was a deleted pointer, download it
+    print(f"[INFO] Downloading from HF to cache: {REPO_ID}/{filename}")
+    CKPTS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Download to the specific local directory to keep everything in ckpts/
+    downloaded_path = hf_hub_download(
+        repo_id=REPO_ID, 
+        filename=filename,
+        local_dir=str(CKPTS_DIR.parent),
+        local_dir_use_symlinks=False
+    )
+    
+    # hf_hub_download with local_dir might return a path inside the local_dir structure
+    # Ensure we return the correct absolute path in our CKPTS_DIR
+    final_path = CKPTS_DIR / filename
+    if not final_path.exists() and Path(downloaded_path).exists():
+        # Fallback copy if hf_hub_download put it in a nested repo-id folder
+        import shutil
+        shutil.copy(downloaded_path, final_path)
+        
+    return str(final_path)
 
 
 def load_model_and_voices():
     """Initialize the model and preload voicepacks."""
-    _config_path = _resolve_file("ckpts/Kokoro-Vietnamese/config.json")
-    _model_path = _resolve_file("ckpts/Kokoro-Vietnamese/kokoro_vi.pth")
+    _config_path = _resolve_file("config.json")
+    _model_path = _resolve_file("kokoro_vi.pth")
 
     with open(_config_path, "r", encoding="utf-8") as _f:
         _config = json.load(_f)
@@ -82,22 +114,21 @@ def load_model_and_voices():
 
     # Allow local voices.json to override default VOICES
     active_voices = VOICES
-    _voices_json = CKPTS_DIR / "ckpts" / "Kokoro-Vietnamese" / "voices.json"
+    _voices_json = CKPTS_DIR / "voices.json"
     if _voices_json.exists():
         with open(_voices_json, "r", encoding="utf-8") as _f:
             active_voices = json.load(_f)
 
     voicepacks = {}
     for _vname, _vinfo in active_voices.items():
-        _vp_path = CKPTS_DIR / "ckpts" / "Kokoro-Vietnamese" / _vinfo["filename"]
+        _vp_path = CKPTS_DIR / _vinfo["filename"]
         if _vp_path.exists():
-            # Explicitly use weights_only=False to match the patch and avoid errors
+            # Explicitly use weights_only=False to match the patch
             voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=False)
             print(f"[INFO] Loaded voice: {_vname}")
         else:
             print(f"[WARN] Voice file not found: {_vp_path}")
 
-    # Automatically print available voices
     print("-" * 60)
     print(f"[INFO] Available voices ({len(voicepacks)}): {', '.join(voicepacks.keys())}")
     print("-" * 60)
@@ -244,7 +275,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
                "  Single:  python apps/cli/main.py -t 'Xin chào' -o out.wav -v diem_trinh\n"
-               "  Batch:   python apps/cli/main.py -i sentences.txt -o ./output_folder -v diem_trinh mai_linh ngoc_huyen"
+               "  Batch:   python apps/cli/main.py -i sentences.txt -o ./output_folder -v diem_trinh mai_linh"
     )
     
     input_group = parser.add_mutually_exclusive_group(required=True)
@@ -254,7 +285,7 @@ def main():
     parser.add_argument("--output", "-o", type=str, required=True, 
                         help="Output file path (Single mode) or base output directory (Batch mode)")
     parser.add_argument("--voice", "-v", type=str, nargs='+', default=["diem_trinh"], 
-                        help="Voice name(s). Provide multiple for batch mode (e.g., -v voice1 voice2). Default: diem_trinh")
+                        help="Voice name(s). Provide multiple for batch mode. Default: diem_trinh")
     parser.add_argument("--speed", "-s", type=float, default=1.0, 
                         help="Speech speed multiplier (default: 1.0, recommended: 0.75 - 1.25)")
     
