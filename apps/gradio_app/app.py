@@ -160,4 +160,10 @@ with gr.Blocks(theme=gr.themes.Citrus(), css=CSS) as demo:
         )
 
 if __name__ == "__main__":
-    demo.launch()
+    import argparse
+    parser = argparse.ArgumentParser(description="Kokoro Vietnamese TTS Gradio App")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=7860, help="Port to listen on (default: 7860)")
+    parser.add_argument("--share", action="store_true", help="Create a public Gradio link")
+    args = parser.parse_args()
+    demo.launch(server_name=args.host, server_port=args.port, share=args.share)
