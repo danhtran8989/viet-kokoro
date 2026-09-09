@@ -95,6 +95,43 @@ def _resolve_file(filename: str) -> str:
     return str(final_path)
 
 
+def _is_lfs_pointer(filepath: Path) -> bool:
+    """Check if a file is a Git LFS pointer (fake text file) instead of real data."""
+    try:
+        with open(filepath, "rb") as f:
+            header = f.read(10)
+        return header.startswith(b"version ")
+    except Exception:
+        return False
+
+
+def _resolve_file(filename: str) -> str:
+    """Resolve a checkpoint file, auto-detecting and replacing Git LFS pointers."""
+    local = CKPTS_DIR / filename
+
+    if local.exists():
+        if _is_lfs_pointer(local):
+            print(f"[WARN] {local.name} is a Git LFS pointer. Deleting and redownloading...")
+            local.unlink()
+        else:
+            print(f"[INFO] Using local checkpoint: {local}")
+            return str(local)
+
+    print(f"[INFO] Downloading from HF: {REPO_ID}/{filename}")
+    CKPTS_DIR.mkdir(parents=True, exist_ok=True)
+    downloaded = hf_hub_download(
+        repo_id=REPO_ID,
+        filename=filename,
+        local_dir=str(CKPTS_DIR.parent),
+        local_dir_use_symlinks=False,
+    )
+    final_path = CKPTS_DIR / filename
+    if not final_path.exists() and Path(downloaded).exists():
+        import shutil
+        shutil.copy(downloaded, final_path)
+    return str(final_path)
+
+
 def load_model_and_voices():
     """Initialize the model and preload voicepacks."""
     _config_path = _resolve_file("config.json")
@@ -121,10 +158,32 @@ def load_model_and_voices():
 
     voicepacks = {}
     for _vname, _vinfo in active_voices.items():
-        _vp_path = CKPTS_DIR / _vinfo["filename"]
+        _vp_filename = _vinfo["filename"]
+        _vp_path = CKPTS_DIR / _vp_filename
+
+        # --- KEY FIX: Check voice files for LFS pointers too ---
+        if _vp_path.exists() and _is_lfs_pointer(_vp_path):
+            print(f"[WARN] Voice file {_vp_filename} is a Git LFS pointer. Redownloading...")
+            _vp_path.unlink()
+
+        if not _vp_path.exists():
+            print(f"[INFO] Downloading voice file: {_vp_filename}")
+            try:
+                downloaded = hf_hub_download(
+                    repo_id=REPO_ID,
+                    filename=_vp_filename,
+                    local_dir=str(CKPTS_DIR.parent),
+                    local_dir_use_symlinks=False,
+                )
+                if not _vp_path.exists() and Path(downloaded).exists():
+                    import shutil
+                    shutil.copy(downloaded, _vp_path)
+            except Exception as e:
+                print(f"[ERROR] Failed to download {_vp_filename}: {e}")
+                continue
+        # -------------------------------------------------------
+
         if _vp_path.exists():
-            # Explicitly use weights_only=False to match the patch
-            print(f"[INFO] Loading voice: {_vname} from {_vp_path}")
             voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=False)
             print(f"[INFO] Loaded voice: {_vname}")
         else:
