@@ -65,8 +65,8 @@ def _resolve_file(filename: str) -> str:
 
 def load_model_and_voices():
     """Initialize the model and preload voicepacks."""
-    _config_path = _resolve_file("config.json")
-    _model_path = _resolve_file("kokoro_vi.pth")
+    _config_path = _resolve_file("ckpts/Kokoro-Vietnamese/config.json")
+    _model_path = _resolve_file("ckpts/Kokoro-Vietnamese/kokoro_vi.pth")
 
     with open(_config_path, "r", encoding="utf-8") as _f:
         _config = json.load(_f)
@@ -82,14 +82,14 @@ def load_model_and_voices():
 
     # Allow local voices.json to override default VOICES
     active_voices = VOICES
-    _voices_json = CKPTS_DIR / "voices.json"
+    _voices_json = CKPTS_DIR / "ckpts" / "Kokoro-Vietnamese" / "voices.json"
     if _voices_json.exists():
         with open(_voices_json, "r", encoding="utf-8") as _f:
             active_voices = json.load(_f)
 
     voicepacks = {}
     for _vname, _vinfo in active_voices.items():
-        _vp_path = CKPTS_DIR / _vinfo["filename"]
+        _vp_path = CKPTS_DIR / "ckpts" / "Kokoro-Vietnamese" / _vinfo["filename"]
         if _vp_path.exists():
             # Explicitly use weights_only=False to match the patch and avoid errors
             voicepacks[_vname] = torch.load(_vp_path, map_location="cpu", weights_only=False)
